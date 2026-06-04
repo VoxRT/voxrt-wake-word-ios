@@ -47,10 +47,11 @@ At RTF ≈ 0.015 the wake-word burns ~1.5 % of one core during continuous listen
 ## Binary footprint
 
 - Swift wrapper source: ~7 KB total (one file)
-- `VoxrtWakeWordNative.xcframework` (compressed): ~500 KB
+- `VoxrtWakeWordNative.xcframework.zip` (downloaded by SPM): ~19 MB compressed (device + simulator slices)
+- After SPM extraction + linker dead-code elimination on the device-only path: ~2–3 MB delta in your app binary
 - Wake-phrase model `voxrt_wake_word.vxrt`: ~100 KB fp16 (downloaded separately)
 
-Net effect on a consuming iOS app's IPA: roughly 600 KB once xcframework + .vxrt + Swift wrapper are bundled.
+Net effect on a consuming iOS app's IPA: roughly 2–3 MB once xcframework device slice + .vxrt + Swift wrapper are linked and bundled.
 
 ## Install
 
