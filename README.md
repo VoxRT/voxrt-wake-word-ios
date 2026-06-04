@@ -83,9 +83,50 @@ SHA-256: `9d40bdc132a2ad8e85bd8a28bb49b77c51a7c62f60567222a037e44418510e8f`
 
 Three common bundling patterns for an ~100 KB asset:
 
-- **Bundle in app resources** — drag `voxrt_wake_word.vxrt` into your Xcode target. Works offline from first launch.
-- **Download on first run** — `URLSession` fetch into `FileManager.default.urls(for: .applicationSupportDirectory, ...)`. Lets you swap models without an app update.
+- **Bundle in app resources** — drag `voxrt_wake_word.vxrt` into your Xcode target and load with `VoxrtWakeWordEngine(bundleResource: "voxrt_wake_word")`. Works offline from first launch.
+- **Download on first run** — `URLSession` fetch into `FileManager.default.urls(for: .applicationSupportDirectory, ...)`, verify the SHA-256, then load with `VoxrtWakeWordEngine(modelURL: cachedFile)`. Lets you swap models without an app update.
 - **App Thinning / On-Demand Resources** — Apple's per-asset delivery if you want the App Store to host the file.
+
+### Download-on-first-run snippet
+
+```swift
+import CryptoKit
+
+private let kModelURL = URL(string:
+    "https://github.com/VoxRT/voxrt-wake-word-models/releases/download/v0.1.0/voxrt_wake_word.vxrt"
+)!
+private let kModelSHA256 = "9d40bdc132a2ad8e85bd8a28bb49b77c51a7c62f60567222a037e44418510e8f"
+
+func ensureModel() async throws -> URL {
+    let fm = FileManager.default
+    let dir = try fm.url(
+        for: .applicationSupportDirectory, in: .userDomainMask,
+        appropriateFor: nil, create: true
+    )
+    let dest = dir.appendingPathComponent("voxrt_wake_word.vxrt")
+    if fm.fileExists(atPath: dest.path),
+       sha256Hex(try Data(contentsOf: dest)) == kModelSHA256 {
+        return dest
+    }
+    let (tmpURL, _) = try await URLSession.shared.download(from: kModelURL)
+    let bytes = try Data(contentsOf: tmpURL)
+    guard sha256Hex(bytes) == kModelSHA256 else {
+        throw NSError(domain: "voxrt", code: 1,
+                      userInfo: [NSLocalizedDescriptionKey: "model SHA-256 mismatch"])
+    }
+    if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
+    try fm.moveItem(at: tmpURL, to: dest)
+    return dest
+}
+
+private func sha256Hex(_ d: Data) -> String {
+    SHA256.hash(data: d).map { String(format: "%02x", $0) }.joined()
+}
+
+// Then, in your app:
+let modelURL = try await ensureModel()
+let engine = try VoxrtWakeWordEngine(modelURL: modelURL)
+```
 
 ## Quick start
 
@@ -169,6 +210,17 @@ input.installTap(onBus: 0, bufferSize: 4_096, format: hwFormat) { hwBuf, _ in
 }
 
 try audioEngine.start()
+```
+
+To stop cleanly (button tap, scene background, navigation away):
+
+```swift
+audioEngine.stop()
+audioEngine.inputNode.removeTap(onBus: 0)
+try? AVAudioSession.sharedInstance().setActive(
+    false, options: [.notifyOthersOnDeactivation]
+)
+wakeWord.close()
 ```
 
 > **Permission:** add `NSMicrophoneUsageDescription` to your `Info.plist` (or `INFOPLIST_KEY_NSMicrophoneUsageDescription` in a generated-plist project) before requesting `AVAudioSession.setActive`.
